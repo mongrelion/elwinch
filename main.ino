@@ -39,9 +39,9 @@ void loop() {
 
 void CalibRemote() {
   while (digitalRead(diCalibButton) == LOW) {
-    digitalWrite(doCalibLampOn,1);
+    digitalWrite(doCalibLampOn, 1);
     delay(1000);
-    digitalWrite(doCalibLampOn,0);
+    digitalWrite(doCalibLampOn, 0);
     remoteCalibValue = 0;
     for (int i = 1; i <= calibCycles; i++) {
       regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
@@ -51,12 +51,12 @@ void CalibRemote() {
     remoteLowValue = remoteCalibValue / calibCycles;
     Serial.print("remote low = ");
     Serial.print(remoteLowValue);
-    digitalWrite(doCalibLampOn,1);
+    digitalWrite(doCalibLampOn, 1);
     while (int(regulationValueIn) <= int(remoteLowValue)+200) {
       regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
       delay(10);
     }
-    digitalWrite(doCalibLampOn,0);
+    digitalWrite(doCalibLampOn, 0);
     remoteCalibValue = 0;
     delay(1000);
     for (int i = 2; i <= calibCycles; i++) {
@@ -67,32 +67,58 @@ void CalibRemote() {
     remoteHighValue = remoteCalibValue / calibCycles;
     Serial.print("remote high = ");
     Serial.println(remoteHighValue);
-    digitalWrite(doCalibLampOn,1);
+    digitalWrite(doCalibLampOn, 1);
     while (digitalRead(diCalibButton) == LOW) {
       delay(100);
     }
-    digitalWrite(doCalibLampOn,0);
+    digitalWrite(doCalibLampOn, 0);
   }
 }
 
+/*
+ * The decision on how to run the motor is done by reading the position of the
+ * 3-way switch located on pin `diRemoteOperationInput`.
+ * These are the settings per position:
+ * - top:    remote
+ * - middle: brake
+ * - bottom: local
+ */
 void RunMotor() {
+  /*
+   * TODO: Consider refactoring this conditional block. The operations could be
+   *       handled in separate functions, called from within each branch
+   *       of the conditional.
+   *       For example: 
+   *       if (digitalRead(diRemoteOperationInput) == LOW) {
+   *         handleRemoteControl()
+   *       } else if (digitalRead(diLocalOperationInput) == LOW){
+   *         handleLocalControl()
+   *       } else {
+   *         handleBrake()
+   *       }
+   *
+   */
+
+  // Handle remote control
   if (digitalRead(diRemoteOperationInput) == LOW) {
-    digitalWrite(doCalibLampOn,1);
+    digitalWrite(doCalibLampOn, 1); // Turn on status lamp
     regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
     regulationValueOut = map(regulationValueIn, remoteLowValue, remoteHighValue, 0, fiveVoltValue);
     if (int (regulationValueOut ) <= breakActivationValue) {
-      digitalWrite(doBreakRelayOff,0);
+      digitalWrite(doBreakRelayOff, 0);
     } else {
-      digitalWrite(doBreakRelayOff,1);
+      digitalWrite(doBreakRelayOff, 1);
     }
+  // Handle local control
   } else if (digitalRead(diLocalOperationInput) == LOW){
-    digitalWrite(doCalibLampOn,0);
-    digitalWrite(doBreakRelayOff,1);
+    digitalWrite(doCalibLampOn, 0);
+    digitalWrite(doBreakRelayOff, 1);
     regulationValueIn = analogRead(aiLocalPot);
     regulationValueOut = map(regulationValueIn, 0, 1024, 0, fiveVoltValue);
+  // Handle brake
   } else {
-    digitalWrite(doCalibLampOn,0);
-    digitalWrite(doBreakRelayOff,0);
+    digitalWrite(doCalibLampOn, 0);
+    digitalWrite(doBreakRelayOff, 0);
     regulationValueIn = analogRead(aiLocalPot);
     regulationValueOut = map(regulationValueIn, 0, 1024, 0, fiveVoltValue);
   }
