@@ -1,24 +1,24 @@
-const int aiLocalPot = A2;  // Analog input pin that the potentiometer is attached to
-const int aoMotorController = 9; // Analog output pin that the ESC is attached to
+const int aiLocalPot        = A2; // Analog input pin that the potentiometer is attached to
+const int aoMotorController = 9;  // Analog output pin that the ESC is attached to
 
 const int diRemoteOperationInput = 2;
-const int diLocalOperationInput = 3;
-const int diCalibButton = 4;
-const int diRemoteInputThrottle = 7;  // Digital input pin that the receiver throttle is attached to
+const int diLocalOperationInput  = 3;
+const int diCalibButton          = 4;
+const int diRemoteInputThrottle  = 7; // Digital input pin that the receiver throttle is attached to
 
-const int doBreakRelayOff = 5;  // Digital output pin that switches break relay. High turns break off
-const int doCalibLampOn = 6;  // Digital output pin that indicates calibration
+const int doBreakRelayOff = 5; // Digital output pin that switches break relay. High turns break off
+const int doCalibLampOn   = 6; // Digital output pin that indicates calibration
 
 const int breakActivationValue = 3;
-const int fiveVoltValue = 92;
-const int calibCycles = 100;
-int remoteLowValue = 1582;
-int remoteHighValue = 2014;
-long remoteCalibValue = 2014;
+const int fiveVoltValue        = 92;
+const int calibCycles          = 100;
+int remoteLowValue             = 1582;
+int remoteHighValue            = 2014;
+long remoteCalibValue          = 2014;
 
-int regulationValueIn = 0;        // value read from the pot
-int regulationValueOut = 0;        // value output to the PWM (analog out)
-int remoteBreakSwitch = 0;        // value read from the pot
+int regulationValueIn  = 0; // value read from the pot
+int regulationValueOut = 0; // value output to the PWM (analog out)
+int remoteBreakSwitch  = 0; // value read from the pot
 
 void setup() {
   // initialize serial communications at 9600 bps:
@@ -82,15 +82,15 @@ void RunMotor() {
     regulationValueOut = map(regulationValueIn, remoteLowValue, remoteHighValue, 0, fiveVoltValue);
     if (int (regulationValueOut ) <= breakActivationValue) {
       digitalWrite(doBreakRelayOff,0);
-  } else {
+    } else {
       digitalWrite(doBreakRelayOff,1);
     }
-} else if (digitalRead(diLocalOperationInput) == LOW){
+  } else if (digitalRead(diLocalOperationInput) == LOW){
     digitalWrite(doCalibLampOn,0);
     digitalWrite(doBreakRelayOff,1);
     regulationValueIn = analogRead(aiLocalPot);
     regulationValueOut = map(regulationValueIn, 0, 1024, 0, fiveVoltValue);
-} else {
+  } else {
     digitalWrite(doCalibLampOn,0);
     digitalWrite(doBreakRelayOff,0);
     regulationValueIn = analogRead(aiLocalPot);
