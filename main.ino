@@ -18,7 +18,6 @@ long remoteCalibValue          = 2014;
 
 int regulationValueIn  = 0; // value read from the pot
 int regulationValueOut = 0; // value output to the PWM (analog out)
-int remoteBreakSwitch  = 0; // value read from the pot
 
 void setup() {
   // initialize serial communications at 9600 bps:
