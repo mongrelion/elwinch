@@ -1,3 +1,13 @@
+#define LAMP_BLINK_DURATION 1000 // ms
+#define NOMINAL 0
+#define SIGNAL_CALIB_MIN 10
+#define CALIBRATE_MIN 20
+#define CALIB_MIN_DONE 30
+#define SIGNAL_CALIB_MAX 40
+#define CALIBRATE_MAX 50
+#define CALIB_MAX_DONE 60
+#define CALIBRATION_DONE 99
+
 const int aiLocalPot        = A2; // Analog input pin that the potentiometer is attached to
 const int aoMotorController = 9;  // Analog output pin that the ESC is attached to
 
@@ -18,6 +28,14 @@ long remoteCalibValue          = 2014;
 
 int regulationValueIn  = 0; // value read from the pot
 int regulationValueOut = 0; // value output to the PWM (analog out)
+bool remoteModeSelected = false;
+bool manualModeSelected = false;
+bool calibButtonActive = false;
+bool remoteCalibModeActive = false;
+
+int calibState = 0;
+unsigned long lastLampBlink = 0;
+int blinkCounter = 0;
 
 void setup() {
   // initialize serial communications at 9600 bps:
@@ -31,46 +49,120 @@ void setup() {
 }
 
 void loop() {
-  CalibRemote;
-  RunMotor;
+  remoteModeSelected = (digitalRead(diRemoteOperationInput) == LOW);
+  manualModeSelected = (digitalRead(diLocalOperationInput) == LOW);
+  calibButtonActive  = (digitalRead(diCalibButton) == LOW);
+  CalibRemote(remoteModeSelected, calibButtonActive);
+  RunMotor(remoteModeSelected, manualModeSelected);
   PrintSerial;
 }
 
-void CalibRemote() {
-  while (digitalRead(diCalibButton) == LOW) {
-    digitalWrite(doCalibLampOn, 1);
-    delay(1000);
-    digitalWrite(doCalibLampOn, 0);
-    remoteCalibValue = 0;
-    for (int i = 1; i <= calibCycles; i++) {
-      regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
-      remoteCalibValue = remoteCalibValue + regulationValueIn;
-      delay(30);
-    }
-    remoteLowValue = remoteCalibValue / calibCycles;
-    Serial.print("remote low = ");
-    Serial.print(remoteLowValue);
-    digitalWrite(doCalibLampOn, 1);
-    while (int(regulationValueIn) <= int(remoteLowValue)+200) {
-      regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
-      delay(10);
-    }
-    digitalWrite(doCalibLampOn, 0);
-    remoteCalibValue = 0;
-    delay(1000);
-    for (int i = 2; i <= calibCycles; i++) {
-      regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
-      remoteCalibValue = remoteCalibValue + regulationValueIn;
-      delay(30);
-    }
-    remoteHighValue = remoteCalibValue / calibCycles;
-    Serial.print("remote high = ");
-    Serial.println(remoteHighValue);
-    digitalWrite(doCalibLampOn, 1);
-    while (digitalRead(diCalibButton) == LOW) {
-      delay(100);
-    }
-    digitalWrite(doCalibLampOn, 0);
+void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
+  int nextState = 0;
+  unsigned long currentTime = millis()
+  remoteCalibModeActive = (calibButtonActive and remoteModeActive);
+  if remoteCalibModeActive and calibState==0 {
+    calibState = SIGNAL_CALIB_MIN;
+  } else if (not remoteCalibMode) {
+    calibState = NOMINAL;
+  }
+
+  switch(calibState) {
+
+    case NOMINAL:
+      // Do nothing
+
+    case SIGNAL_CALIB_MIN:
+
+      unsigned long currentTime = millis()
+      remoteCalibValue = 0;
+      if (currentTime - lastLampBlink > LAMP_BLINK_DURATION and lastLampBlink > 0) {
+        digitalWrite(doCalibLampOn, 0);
+        calibState = CALIBRATE_MIN;
+        lastLampBlink = 0;
+      } else if (lastLampBlink == 0) {
+        lastLampBlink = currentTime;
+        Serial.print("Leave remote throttle at idle");
+        digitalWrite(doCalibLampOn, 1);
+      }
+
+    case CALIBRATE_MIN:
+
+      for (int i = 1; i <= calibCycles; i++) {
+        regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
+        remoteCalibValue = remoteCalibValue + regulationValueIn;
+        delay(30);
+      }
+      remoteLowValue = remoteCalibValue / calibCycles;
+      Serial.print("remote low = ");
+      Serial.print(remoteLowValue);
+      calibState = CALIB_MIN_DONE;
+
+    case CALIB_MIN_DONE:
+
+      unsigned long currentTime = millis()
+      if (currentTime - lastLampBlink > LAMP_BLINK_DURATION/4 and lastLampBlink > 0) {
+        if (blinkCounter >= 3) {
+          calibState = SIGNAL_CALIB_MAX;
+          blinkCounter = 0;
+        } else {
+          digitalWrite(doCalibLampOn, 0);
+        }
+        lastLampBlink = 0;
+      } else if (lastLampBlink == 0) {
+        lastLampBlink = currentTime;
+        if (blinkCounter == 0) Serial.print("Calibration of throttle min done!");
+        digitalWrite(doCalibLampOn, 1);
+        blinkCounter += 1;
+      }
+
+    case SIGNAL_CALIB_MAX:
+
+      unsigned long currentTime = millis()
+      remoteCalibValue = 0;
+      if (currentTime - lastLampBlink > LAMP_BLINK_DURATION and lastLampBlink > 0) {
+        digitalWrite(doCalibLampOn, 0);
+        calibState = CALIBRATE_MAX;
+        lastLampBlink = 0;
+      } else if (lastLampBlink == 0) {
+        lastLampBlink = currentTime;
+        Serial.print("Hold remote throttle at max");
+      }
+
+    case CALIBRATE_MAX:
+
+      for (int i = 2; i <= calibCycles; i++) {
+        regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
+        remoteCalibValue = remoteCalibValue + regulationValueIn;
+        delay(30);
+      }
+      remoteHighValue = remoteCalibValue / calibCycles;
+      Serial.print("remote high = ");
+      Serial.println(remoteHighValue);
+      calibState = CALIB_MAX_DONE;
+
+    case CALIB_MAX_DONE:
+
+      unsigned long currentTime = millis()
+      if (currentTime - lastLampBlink > LAMP_BLINK_DURATION/4 and lastLampBlink > 0) {
+        if (blinkCounter >= 3) {
+          calibState = CALIBRATION_DONE;
+          blinkCounter = 0;
+        }
+        digitalWrite(doCalibLampOn, 0);
+        lastLampBlink = 0;
+      } else if (lastLampBlink == 0) {
+        lastLampBlink = currentTime;
+        if (blinkCounter == 0) Serial.print("Calibration of throttle max done!");
+        digitalWrite(doCalibLampOn, 1);
+        blinkCounter += 1;
+      }
+
+    case CALIBRATION_DONE:
+      // Do nothing and wait for release of button
+
+    default: // Reset values
+      remoteCalibModeActive = false;
   }
 }
 
@@ -82,7 +174,7 @@ void CalibRemote() {
  * - middle: brake
  * - bottom: local
  */
-void RunMotor() {
+void RunMotor(bool remoteControlActive, bool manualControlActive, bool remoteCalibModeActive) {
   /*
    * TODO: Consider refactoring this conditional block. The operations could be
    *       handled in separate functions, called from within each branch
@@ -99,7 +191,7 @@ void RunMotor() {
    */
 
   // Handle remote control
-  if (digitalRead(diRemoteOperationInput) == LOW) {
+  if (remoteControlActive and not remoteCalibModeActive) {
     digitalWrite(doCalibLampOn, 1); // Turn on status lamp
     regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
     regulationValueOut = map(regulationValueIn, remoteLowValue, remoteHighValue, 0, fiveVoltValue);
@@ -109,7 +201,7 @@ void RunMotor() {
       digitalWrite(doBreakRelayOff, 1);
     }
   // Handle local control
-  } else if (digitalRead(diLocalOperationInput) == LOW){
+  } else if (manualControlActive){
     digitalWrite(doCalibLampOn, 0);
     digitalWrite(doBreakRelayOff, 1);
     regulationValueIn = analogRead(aiLocalPot);
@@ -119,7 +211,8 @@ void RunMotor() {
     digitalWrite(doCalibLampOn, 0);
     digitalWrite(doBreakRelayOff, 0);
     regulationValueIn = analogRead(aiLocalPot);
-    regulationValueOut = map(regulationValueIn, 0, 1024, 0, fiveVoltValue);
+    //regulationValueOut = map(regulationValueIn, 0, 1024, 0, fiveVoltValue);
+    regulationValueOut = 0; // Function should never output other than 0 if brake is active
   }
   analogWrite(aoMotorController, regulationValueOut);
 }
