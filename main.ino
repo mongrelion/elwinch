@@ -53,17 +53,17 @@ void loop() {
   manualModeSelected = (digitalRead(diLocalOperationInput) == LOW);
   calibButtonActive  = (digitalRead(diCalibButton) == LOW);
   CalibRemote(remoteModeSelected, calibButtonActive);
-  RunMotor(remoteModeSelected, manualModeSelected);
+  RunMotor(remoteModeSelected, manualModeSelected, remoteCalibModeActive);
   PrintSerial;
 }
 
 void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
   int nextState = 0;
-  unsigned long currentTime = millis()
+  unsigned long currentTime = millis();
   remoteCalibModeActive = (calibButtonActive and remoteModeActive);
-  if remoteCalibModeActive and calibState==0 {
+  if (remoteCalibModeActive and calibState == 0) {
     calibState = SIGNAL_CALIB_MIN;
-  } else if (not remoteCalibMode) {
+  } else if (not remoteModeActive) {
     calibState = NOMINAL;
   }
 
@@ -74,7 +74,6 @@ void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
 
     case SIGNAL_CALIB_MIN:
 
-      unsigned long currentTime = millis()
       remoteCalibValue = 0;
       if (currentTime - lastLampBlink > LAMP_BLINK_DURATION and lastLampBlink > 0) {
         digitalWrite(doCalibLampOn, 0);
@@ -100,7 +99,6 @@ void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
 
     case CALIB_MIN_DONE:
 
-      unsigned long currentTime = millis()
       if (currentTime - lastLampBlink > LAMP_BLINK_DURATION/4 and lastLampBlink > 0) {
         if (blinkCounter >= 3) {
           calibState = SIGNAL_CALIB_MAX;
@@ -118,7 +116,6 @@ void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
 
     case SIGNAL_CALIB_MAX:
 
-      unsigned long currentTime = millis()
       remoteCalibValue = 0;
       if (currentTime - lastLampBlink > LAMP_BLINK_DURATION and lastLampBlink > 0) {
         digitalWrite(doCalibLampOn, 0);
@@ -143,7 +140,7 @@ void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
 
     case CALIB_MAX_DONE:
 
-      unsigned long currentTime = millis()
+      currentTime = millis();
       if (currentTime - lastLampBlink > LAMP_BLINK_DURATION/4 and lastLampBlink > 0) {
         if (blinkCounter >= 3) {
           calibState = CALIBRATION_DONE;
