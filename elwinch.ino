@@ -37,6 +37,15 @@ int calibState = 0;
 unsigned long lastLampBlink = 0;
 int blinkCounter = 0;
 
+void flashIt() {
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(25);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(50);
+  }
+}
+
 void setup() {
   // initialize serial communications at 9600 bps:
   Serial.begin(9600);
@@ -46,6 +55,13 @@ void setup() {
   pinMode(diCalibButton, INPUT_PULLUP);
   pinMode(doBreakRelayOff, OUTPUT);
   pinMode(doCalibLampOn, OUTPUT);
+
+  for (int i = 0; i < 3; i++) {
+    flashIt();
+    delay(300);
+  }
+
+  Serial.println("-> Setup done");
 }
 
 void loop() {
@@ -176,7 +192,7 @@ void RunMotor(bool remoteControlActive, bool manualControlActive, bool remoteCal
    * TODO: Consider refactoring this conditional block. The operations could be
    *       handled in separate functions, called from within each branch
    *       of the conditional.
-   *       For example: 
+   *       For example:
    *       if (digitalRead(diRemoteOperationInput) == LOW) {
    *         handleRemoteControl()
    *       } else if (digitalRead(diLocalOperationInput) == LOW){
