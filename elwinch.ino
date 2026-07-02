@@ -1,6 +1,8 @@
 // =============================================================================
 // elwinch.ino — Arduino-based electric winch controller
 // =============================================================================
+
+#include <EEPROM.h>
 //
 // This sketch bridges an RC receiver and a manual potentiometer to an
 // Electronic Speed Controller (Kelly KLS96601), driving a QS 16" 8kW motor.
@@ -74,6 +76,15 @@ int  remoteHighValue = 2014;  // Pulse width (µs) at full throttle   — calibr
 long remoteCalibValue = 2014; // Running accumulator used during calibration averaging
 
 // ---------------------------------------------------------------------------
+// EEPROM layout for persisting calibration endpoints
+// ---------------------------------------------------------------------------
+
+#define EEPROM_MAGIC_ADDR  0     // Address of magic byte (valid-data flag)
+#define EEPROM_MAGIC_BYTE  0xA5  // Magic value indicating valid calibration data
+#define EEPROM_LOW_ADDR    1     // Address of remoteLowValue (int, 2 bytes)
+#define EEPROM_HIGH_ADDR   3     // Address of remoteHighValue (int, 2 bytes)
+
+// ---------------------------------------------------------------------------
 // Runtime state
 // ---------------------------------------------------------------------------
 
@@ -118,6 +129,20 @@ void setup() {
   pinMode(doBreakRelayOff, OUTPUT);
   pinMode(doCalibLampOn, OUTPUT);
 
+  // -------- Restore persisted calibration from EEPROM --------
+  byte magic;
+  EEPROM.get(EEPROM_MAGIC_ADDR, magic);
+  if (magic == EEPROM_MAGIC_BYTE) {
+    EEPROM.get(EEPROM_LOW_ADDR, remoteLowValue);
+    EEPROM.get(EEPROM_HIGH_ADDR, remoteHighValue);
+    Serial.print("Loaded calibration from EEPROM: low=");
+    Serial.print(remoteLowValue);
+    Serial.print(" high=");
+    Serial.println(remoteHighValue);
+  } else {
+    Serial.println("No calibration in EEPROM — using defaults");
+  }
+
   // Boot greeting: flash the built-in LED three times
   for (int i = 0; i < 3; i++) {
     flashIt();
@@ -143,15 +168,16 @@ void loop() {
   calibButtonActive  = (digitalRead(diCalibButton) == LOW);
 
   // -------- Run the calibration state machine --------
-  // Note: CalibRemote() updates the global remoteCalibModeActive and
-  //       the calibration endpoint values (remoteLowValue, remoteHighValue).
-  CalibRemote(remoteModeSelected, calibButtonActive);
+  // CalibRemote() reads globals (remoteModeSelected, calibButtonActive)
+  // and updates remoteCalibModeActive, remoteLowValue, remoteHighValue.
+  CalibRemote();
 
   // -------- Compute ESC output and handle brake relay --------
-  RunMotor(remoteModeSelected, manualModeSelected, remoteCalibModeActive);
+  // RunMotor() reads globals for the active mode and brake state.
+  RunMotor();
 
   // -------- Debug output --------
-  PrintSerial;  // (function-call syntax without parentheses is valid in Arduino)
+  PrintSerial();
 }
 
 // ==========================================================================
@@ -191,16 +217,16 @@ void loop() {
 // confirmation in CALIB_MIN_DONE gates on timing, so it takes several
 // subsequent loop iterations to play the three blinks.
 // ==========================================================================
-void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
+void CalibRemote() {
   int nextState = 0;                        // (unused — kept for legacy)
   unsigned long currentTime = millis();     // Snapshot current time once per call
 
   // Arm calibration when both remote mode and button are active.
   // Disarm immediately if the user switches away from remote mode.
-  remoteCalibModeActive = (calibButtonActive and remoteModeActive);
+  remoteCalibModeActive = (calibButtonActive and remoteModeSelected);
   if (remoteCalibModeActive and calibState == NOMINAL) {
     calibState = SIGNAL_CALIB_MIN;
-  } else if (not remoteModeActive) {
+  } else if (not remoteModeSelected) {
     calibState = NOMINAL;
   }
 
@@ -291,12 +317,10 @@ void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
 
     // ------------------------------------------------------------------
     // CALIBRATE_MAX — Sample max-throttle pulse width and average.
-    // NOTE: the loop starts at i=2 (not i=1) — a minor off-by-one,
-    // meaning 99 readings instead of 100.  Practically negligible.
     // ------------------------------------------------------------------
     case CALIBRATE_MAX:
 
-      for (int i = 2; i <= calibCycles; i++) {
+      for (int i = 1; i <= calibCycles; i++) {
         regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
         remoteCalibValue = remoteCalibValue + regulationValueIn;
         delay(30);
@@ -304,6 +328,13 @@ void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
       remoteHighValue = remoteCalibValue / calibCycles;  // Store max endpoint
       Serial.print("remote high = ");
       Serial.println(remoteHighValue);
+
+      // Persist both endpoints to EEPROM so they survive power cycles
+      EEPROM.put(EEPROM_MAGIC_ADDR, EEPROM_MAGIC_BYTE);
+      EEPROM.put(EEPROM_LOW_ADDR, remoteLowValue);
+      EEPROM.put(EEPROM_HIGH_ADDR, remoteHighValue);
+      Serial.println("Calibration saved to EEPROM");
+
       calibState = CALIB_MAX_DONE;
       // Falls through to CALIB_MAX_DONE
 
@@ -351,6 +382,9 @@ void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
 // RunMotor — Determine ESC output based on the active operating mode
 // ==========================================================================
 //
+// Reads the global mode flags (remoteModeSelected, manualModeSelected,
+// remoteCalibModeActive) set by loop() and CalibRemote().
+//
 // The mode is selected by a 3-way switch on the control board:
 //
 //   Switch position │ Mode   │ Behaviour
@@ -366,10 +400,10 @@ void CalibRemote(bool remoteModeActive, bool calibButtonActive) {
 // brake relay is not toggled.  CalibRemote() uses pulseIn on the same
 // throttle pin independently.
 // ==========================================================================
-void RunMotor(bool remoteControlActive, bool manualControlActive, bool remoteCalibModeActive) {
+void RunMotor() {
 
   // -------- REMOTE mode (top) --------
-  if (remoteControlActive and not remoteCalibModeActive) {
+  if (remoteModeSelected and not remoteCalibModeActive) {
     digitalWrite(doCalibLampOn, HIGH);          // Status lamp on (indicates remote operation)
 
     regulationValueIn = pulseIn(diRemoteInputThrottle, HIGH);
@@ -386,14 +420,13 @@ void RunMotor(bool remoteControlActive, bool manualControlActive, bool remoteCal
     }
 
   // -------- LOCAL (manual) mode (bottom) --------
-  } else if (manualControlActive) {
+  } else if (manualModeSelected) {
     digitalWrite(doCalibLampOn, LOW);           // Status lamp off
     digitalWrite(doBreakRelayOff, HIGH);        // Brake released (local operation => manual control)
 
     regulationValueIn = analogRead(aiLocalPot);
-    // Map the potentiometer ADC reading (0–1023) to ESC PWM range (0–92).
-    // NOTE: it maps to 1024 instead of 1023 — a minor off-by-one.
-    regulationValueOut = map(regulationValueIn, 0, 1024, 0, fiveVoltValue);
+    // Map the 10-bit ADC reading (0–1023) to the ESC PWM range (0–92).
+    regulationValueOut = map(regulationValueIn, 0, 1023, 0, fiveVoltValue);
 
   // -------- BRAKE (middle / neither switch active) --------
   } else {

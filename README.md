@@ -50,14 +50,9 @@ make upload PORT=/dev/ttyUSB0
 
 Known issues and improvements to address:
 
-1. **`PrintSerial;` missing function call** — In `loop()`, `PrintSerial;` lacks parentheses and is a no-op in C/C++ (evaluates the function address, discards it). Should be `PrintSerial();` if serial output is intended each loop iteration.
-
-2. **Off-by-one in `CALIBRATE_MAX` sampling** — The `for` loop starts at `i = 2` instead of `i = 1`, taking 99 readings instead of 100 for the max-throttle endpoint. Practically negligible but worth fixing.
-
-3. **Potentiometer map range** — Local mode maps `0–1024` instead of `0–1023`. The ATmega4809 ADC is 10-bit (0–1023), so the upper end is slightly compressed.
-
-4. **No EEPROM persistence for calibration** — `remoteLowValue` and `remoteHighValue` are stored in RAM only. They reset to hardcoded defaults (1582/2014) on power cycle. Calibrated endpoints should be persisted in EEPROM.
-
-5. **Mixed local/global access pattern** — `CalibRemote()` receives mode flags by value (as parameters) but directly mutates the global `remoteCalibModeActive`. The parameter names (`remoteModeActive`, `calibButtonActive`) also shadow similarly-named globals (`remoteModeSelected`, `calibButtonActive`). Consider passing by reference or refactoring state ownership.
-
-6. **Blocking loops during calibration** — `CALIBRATE_MIN` and `CALIBRATE_MAX` block for ~3 seconds (`100 × pulseIn + delay(30)`). The Arduino is unresponsive to the mode switch during this window. Consider a non-blocking sampling approach.
+1. ~~**`PrintSerial;` missing function call**~~ — Fixed: changed to `PrintSerial();`.
+2. ~~**Off-by-one in `CALIBRATE_MAX` sampling**~~ — Fixed: loop now starts at `i = 1`.
+3. ~~**Potentiometer map range**~~ — Fixed: local mode now maps `0–1023` (10-bit ADC).
+4. ~~**No EEPROM persistence for calibration**~~ — Fixed: calibration endpoints are now persisted to EEPROM with a magic-byte validity check, loaded on boot.
+5. ~~**Mixed local/global access pattern**~~ — Fixed: `CalibRemote()` and `RunMotor()` now read global state flags directly instead of taking shadowing parameters.
+6. **Blocking loops during calibration** — This is intentional. The ~3-second blocking loops during `CALIBRATE_MIN` and `CALIBRATE_MAX` ensure the calibration sampling is not interrupted by mode-switch changes, keeping the calibration sequence deterministic.
